@@ -1174,13 +1174,11 @@ unsigned int static KimotoGravityWell(const CBlockIndex* pindexLast, const CBloc
     }
     if (bnNew > bnProofOfWorkLimit) { bnNew = bnProofOfWorkLimit; }
 
-#ifdef _ANONDEBUG
     /// debug print
     printf("Difficulty Retarget - Kimoto Gravity Well\n");
     printf("PastRateAdjustmentRatio = %g\n", PastRateAdjustmentRatio);
     printf("Before: %08x %s\n", BlockLastSolved->nBits, CBigNum().SetCompact(BlockLastSolved->nBits).getuint256().ToString().c_str());
     printf("After: %08x %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
-#endif
 
     return bnNew.GetCompact();
 }
@@ -1195,6 +1193,7 @@ unsigned int static SomethingCoolOfCourse(const CBlockIndex* pindexLast, const C
     return nProofOfWorkLimit;
 
   const CBlockIndex* pindexFirst = pindexLast->pprev;
+#ifdef TESTNET_SPECIAL_DIFFICULTY_RULE
   // Special difficulty rule for testnet:
   if (fTestNet)
   {
@@ -1211,6 +1210,7 @@ unsigned int static SomethingCoolOfCourse(const CBlockIndex* pindexLast, const C
           return pindex->nBits;
       }
   }
+#endif
   printf("Retarget nActualTimespan\n");
   int64_t nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
   if (nActualTimespan < (retargetTimespan - (retargetTimespan/4)) ) nActualTimespan = (retargetTimespan - (retargetTimespan/4));
@@ -1254,21 +1254,23 @@ unsigned int static DigiShield(const CBlockIndex* pindexLast, const CBlockHeader
 
     // Only change once per interval
     if ((pindexLast->nHeight+1) % retargetInterval != 0){
-      // Special difficulty rule for testnet:
-        if (fTestNet){
+        // Special difficulty rule for testnet:
+#ifdef TESTNET_SPECIAL_DIFFICULTY_RULE
+        if (fTestNet) {
             // If the new block's timestamp is more than 2* 10 minutes
             // then allow mining of a min-difficulty block.
             if (pblock->nTime > pindexLast->nTime + retargetSpacing*2)
                 return nProofOfWorkLimit;
-        else {
-            // Return the last non-special-min-difficulty-rules-block
-            const CBlockIndex* pindex = pindexLast;
-            while (pindex->pprev && pindex->nHeight % retargetInterval != 0 && pindex->nBits == nProofOfWorkLimit)
-            pindex = pindex->pprev;
-        return pindex->nBits;
+            else {
+                // Return the last non-special-min-difficulty-rules-block
+                const CBlockIndex* pindex = pindexLast;
+                while (pindex->pprev && pindex->nHeight % retargetInterval != 0 && pindex->nBits == nProofOfWorkLimit)
+                    pindex = pindex->pprev;
+                return pindex->nBits;
+            }
         }
-      }
-      return pindexLast->nBits;
+#endif
+        return pindexLast->nBits;
     }
 
     // DigiByte: This fixes an issue where a 51% attack can change difficulty at will.
@@ -1345,7 +1347,7 @@ unsigned int static NeoGetNextWorkRequired(const CBlockIndex* pindexLast, const 
     uint64 PastBlocksMax = PastSecondsMax / BlocksTargetSpacing;
 
     // GNOSIS experimenting with new algo on testnet
-    if (fTestNet && pindexLast->nHeight > 20)
+    if (fTestNet && pindexLast->nHeight > 192)
         return DigiShield(pindexLast, pblock);
     else
         return KimotoGravityWell(pindexLast, pblock, BlocksTargetSpacing, PastBlocksMin, PastBlocksMax);
