@@ -1186,6 +1186,134 @@ unsigned int static KimotoGravityWell(const CBlockIndex* pindexLast, const CBloc
 }
 
 
+
+unsigned int static SomethingCoolOfCourse(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
+  unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
+  const unsigned int retargetTimespan = 12345; // GNOSIS: not sure what this should be
+  // Genesis block
+  if (pindexLast == NULL)
+    return nProofOfWorkLimit;
+
+  const CBlockIndex* pindexFirst = pindexLast->pprev;
+  // Special difficulty rule for testnet:
+  if (fTestNet)
+  {
+      // If the new block's timestamp is more than 3* 6 minutes
+      // then allow mining of a min-difficulty block.
+      if (pblock->nTime > pindexLast->nTime + nTargetSpacing*6)
+        return nProofOfWorkLimit;
+      else
+      {
+          // Return the last non-special-min-difficulty-rules-block
+          const CBlockIndex* pindex = pindexLast;
+          while (pindex->pprev && pindex->nHeight % 1 != 0 && pindex->nBits == nProofOfWorkLimit)
+            pindex = pindex->pprev;
+          return pindex->nBits;
+      }
+  }
+  printf("Retarget nActualTimespan\n");
+  int64_t nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
+  if (nActualTimespan < (retargetTimespan - (retargetTimespan/4)) ) nActualTimespan = (retargetTimespan - (retargetTimespan/4));
+  if (nActualTimespan > (retargetTimespan + (retargetTimespan/2)) ) nActualTimespan = (retargetTimespan + (retargetTimespan/2));
+
+  CBigNum bnNew(pindexLast->nBits);
+  if (nActualTimespan < nTargetTimespan/3)
+    nActualTimespan = nTargetTimespan/3;
+  if (nActualTimespan > nTargetTimespan*3)
+    nActualTimespan = nTargetTimespan*3;
+  // Retarget
+  bnNew *= nActualTimespan;
+  bnNew /= nTargetTimespan;
+  if (bnNew > bnProofOfWorkLimit){
+    bnNew = bnProofOfWorkLimit;
+  }
+
+  printf("nTargetTimespan = %lld nActualTimespan = %ld\n", nTargetTimespan, nActualTimespan);
+  printf("Before: %08x %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
+  printf("After: %08x %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+
+  return bnNew.GetCompact();
+}
+
+
+
+unsigned int static DigiShield(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
+{
+    // DigiShield difficulty retarget system
+    // Credits to DigiByte developers
+    unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
+
+    int blockstogoback = 0;
+
+    //set default to pre-v2.0 values
+    int64 retargetTimespan = nTargetSpacing; //Make sure we retarget every block
+    int64 retargetSpacing = nTargetSpacing;
+    int64 retargetInterval = retargetTimespan / retargetSpacing;
+    // Genesis block
+    if (pindexLast == NULL) return nProofOfWorkLimit;
+
+    // Only change once per interval
+    if ((pindexLast->nHeight+1) % retargetInterval != 0){
+      // Special difficulty rule for testnet:
+        if (fTestNet){
+            // If the new block's timestamp is more than 2* 10 minutes
+            // then allow mining of a min-difficulty block.
+            if (pblock->nTime > pindexLast->nTime + retargetSpacing*2)
+                return nProofOfWorkLimit;
+        else {
+            // Return the last non-special-min-difficulty-rules-block
+            const CBlockIndex* pindex = pindexLast;
+            while (pindex->pprev && pindex->nHeight % retargetInterval != 0 && pindex->nBits == nProofOfWorkLimit)
+            pindex = pindex->pprev;
+        return pindex->nBits;
+        }
+      }
+      return pindexLast->nBits;
+    }
+
+    // DigiByte: This fixes an issue where a 51% attack can change difficulty at will.
+    // Go back the full period unless it's the first retarget after genesis. Code courtesy of Art Forz
+    blockstogoback = retargetInterval-1;
+    if ((pindexLast->nHeight+1) != retargetInterval) blockstogoback = retargetInterval;
+
+    // Go back by what we want to be 14 days worth of blocks
+    const CBlockIndex* pindexFirst = pindexLast;
+    for (int i = 0; pindexFirst && i < blockstogoback; i++)
+        pindexFirst = pindexFirst->pprev;
+    assert(pindexFirst);
+
+    // Limit adjustment step
+    int64 nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
+    printf("  nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
+
+
+
+    CBigNum bnNew;
+    bnNew.SetCompact(pindexLast->nBits);
+
+    if (nActualTimespan < (retargetTimespan - (retargetTimespan/4)) ) nActualTimespan = (retargetTimespan - (retargetTimespan/4));
+    if (nActualTimespan > (retargetTimespan + (retargetTimespan/2)) ) nActualTimespan = (retargetTimespan + (retargetTimespan/2));
+
+    // Retarget
+    bnNew *= nActualTimespan;
+    bnNew /= retargetTimespan;
+
+    /// debug print
+    printf("DigiShield RETARGET \n");
+    printf("retargetTimespan = %"PRI64d"    nActualTimespan = %"PRI64d"\n", retargetTimespan, nActualTimespan);
+    printf("Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
+    printf("After:  %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+
+
+    if (bnNew > bnProofOfWorkLimit)
+        bnNew = bnProofOfWorkLimit;
+
+
+
+    return bnNew.GetCompact();
+}
+
+
 //
 // minimum amount of work that could possibly be required nTime after
 // minimum work required was nBase
@@ -1216,7 +1344,11 @@ unsigned int static NeoGetNextWorkRequired(const CBlockIndex* pindexLast, const 
     uint64 PastBlocksMin = PastSecondsMin / BlocksTargetSpacing;
     uint64 PastBlocksMax = PastSecondsMax / BlocksTargetSpacing;
 
-    return KimotoGravityWell(pindexLast, pblock, BlocksTargetSpacing, PastBlocksMin, PastBlocksMax);
+    // GNOSIS experimenting with new algo on testnet
+    if (fTestNet && pindexLast->nHeight > 20)
+        return DigiShield(pindexLast, pblock);
+    else
+        return KimotoGravityWell(pindexLast, pblock, BlocksTargetSpacing, PastBlocksMin, PastBlocksMax);
 }
 
 unsigned int static OldGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
