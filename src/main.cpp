@@ -43,7 +43,7 @@ map<uint256, CBlockIndex*> mapBlockIndex;
 
 // Genesis
 uint256 hashGenesisBlock("0x2c85519db50a40c033ccb3d4cb729414016afa537c66537f7d3d52dcd1d484a3");
-static CBigNum bnProofOfWorkLimit( CBigNum().SetCompact(0x1e0ffff0) );
+static CBigNum bnProofOfWorkLimit( CBigNum().SetCompact(0x1f03fffc) );      // GNOSIS: 0x1f03fffc is 64x easier difficulty minimum (previously 0x1e0ffff0)
 CBlockIndex* pindexGenesisBlock = NULL;
 int nBestHeight = -1;
 uint256 nBestChainWork = 0;
@@ -1112,7 +1112,7 @@ int64 static GetBlockValue(int nHeight, int64 nFees)
 // Protocol 1 & 2
 
 static const int64 nTargetTimespan = 86184; //420 * 205.2; = 86184 // Anoncoin: 420 blocks
-static const int64 nTargetSpacing = 205;//3.42 * 60; // Anoncoin: 3.42 minutes
+static const int64 nTargetSpacing = 20; // for testing, 20 second blocks (previously: 3.42 * 60; // Anoncoin: 3.42 minutes)
 static const int64 nInterval = nTargetTimespan / nTargetSpacing;
 
 static const int nDifficultySwitchHeight = 15420;
