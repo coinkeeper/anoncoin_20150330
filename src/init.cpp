@@ -545,6 +545,11 @@ bool AppInit2(boost::thread_group& threadGroup)
     }
 
     fTestNet = GetBoolArg("-testnet");
+    if (!fTestNet)
+    {
+        printf("Don't use this branch on mainnet!!! Aborting.\n");
+        std::abort();
+    }
     fBloomFilters = GetBoolArg("-bloomfilters", true);
     if (fBloomFilters)
         nLocalServices |= NODE_BLOOM;
