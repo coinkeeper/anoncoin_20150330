@@ -678,6 +678,9 @@ bool CTxMemPool::accept(CValidationState &state, CTransaction &tx, bool fCheckIn
     if ((int64)tx.nLockTime > std::numeric_limits<int>::max())
         return error("CTxMemPool::accept() : not accepting nLockTime beyond 2038 yet");
 
+    unsigned int nBytes = tx.GetSerializeSize(SER_NETWORK, CTransaction::CURRENT_VERSION);
+    printf("GNOSIS TXDEBUG: relay transaction of %d bytes\n", nBytes);
+
     // Rather not work on nonstandard transactions (unless -testnet)
     string strNonStd;
     if (!fTestNet && !tx.IsStandard(strNonStd))
