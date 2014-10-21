@@ -4953,6 +4953,8 @@ void static AnoncoinMiner(CWallet *pwallet)
                 }
                 pblock->nNonce += 1;
                 nHashesDone += 1;
+                if ((pblock->nNonce & 0xF) == 0)
+                    MilliSleep(60);     // YOYO ADJUST THIS
                 if ((pblock->nNonce & 0xFF) == 0)
                     break;
             }
