@@ -1240,7 +1240,167 @@ unsigned int static SomethingCoolOfCourse(const CBlockIndex* pindexLast, const C
 
 
 
-unsigned int static DigiShield(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
+// This is the new DigiShield taken from DogeCoin commit b5dddf29
+// New Difficulty adjustement and reward scheme by /u/lleti, rog1121, and DigiByte (DigiShield Developers).
+static const int64_t nTargetTimespan = 4 * 60 * 60; // Dogecoin: every 4 hours
+static const int64_t nTargetTimespanNEW = 60 ; // Dogecoin: every 1 minute
+static const int64_t nTargetSpacing = 60; // Dogecoin: 1 minute
+static const int64_t nInterval = nTargetTimespan / nTargetSpacing;
+
+static const int64_t nDiffChangeTarget = 145000; // Patch effective @ block 145000
+static const int64_t nTestnetResetTargetFix = 157500; // Testnet enables target reset at block 157500
+
+//
+// minimum amount of work that could possibly be required nTime after
+// minimum work required was nBase
+//
+unsigned int DogeCoin_ComputeMinWork(unsigned int nBase, int64_t nTime)
+{
+    const CBigNum &bnLimit = Params().ProofOfWorkLimit();
+    // Testnet has min-difficulty blocks
+    // after nTargetSpacing*2 time between blocks:
+    if (TestNet() && nTime > nTargetSpacing*2)
+        return bnLimit.GetCompact();
+
+    CBigNum bnResult;
+    bnResult.SetCompact(nBase);
+    while (nTime > 0 && bnResult < bnLimit)
+    {
+        if(chainActive.Height()+1<nDiffChangeTarget){
+            // Maximum 400% adjustment...
+            bnResult *= 4;
+            // ... in best-case exactly 4-times-normal target time
+            nTime -= nTargetTimespan*4;
+        } else {
+            // Maximum 10% adjustment...
+            bnResult = (bnResult * 110) / 100;
+            // ... in best-case exactly 4-times-normal target time
+            nTime -= nTargetTimespanNEW*4;
+        }
+    }
+    if (bnResult > bnLimit)
+        bnResult = bnLimit;
+    return bnResult.GetCompact();
+}
+
+unsigned int DogeCoin_GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
+{
+    unsigned int nProofOfWorkLimit = Params().ProofOfWorkLimit().GetCompact();
+
+    int nHeight = pindexLast->nHeight + 1;
+    bool fNewDifficultyProtocol = (nHeight >= nDiffChangeTarget);
+    
+    int64_t retargetTimespan = nTargetTimespan;
+    int64_t retargetInterval = nInterval;
+    
+    if (fNewDifficultyProtocol) {
+        retargetInterval = nTargetTimespanNEW / nTargetSpacing;
+        retargetTimespan = nTargetTimespanNEW;
+    }
+    
+    // Genesis block
+    if (pindexLast == NULL)
+        return nProofOfWorkLimit;
+
+    if (TestNet() && pindexLast->nHeight >= nTestnetResetTargetFix && pblock->nTime > pindexLast->nTime + nTargetSpacing*2)
+    {
+        // Special difficulty rule for testnet:
+        // If the new block's timestamp is more than 2* nTargetSpacing minutes
+        // then allow mining of a min-difficulty block.
+        return nProofOfWorkLimit;
+    }
+
+    // Only change once per interval
+    if ((pindexLast->nHeight+1) % retargetInterval != 0)
+    {
+        if (TestNet())
+        {
+            if (pblock->nTime > pindexLast->nTime + nTargetSpacing*2)
+            {
+                // Special difficulty rule for testnet:
+                // If the new block's timestamp is more than 2* nTargetSpacing minutes
+                // then allow mining of a min-difficulty block.
+                return nProofOfWorkLimit;
+            } else {
+                // Return the last non-special-min-difficulty-rules-block
+                const CBlockIndex* pindex = pindexLast;
+                while (pindex->pprev && pindex->nHeight % retargetInterval != 0 && pindex->nBits == nProofOfWorkLimit)
+                    pindex = pindex->pprev;
+                return pindex->nBits;
+            }
+        }
+        return pindexLast->nBits;
+    }
+
+    // Dogecoin: This fixes an issue where a 51% attack can change difficulty at will.
+    // Go back the full period unless it's the first retarget after genesis. Code courtesy of Art Forz
+    int blockstogoback = retargetInterval-1;
+    if ((pindexLast->nHeight+1) != retargetInterval)
+        blockstogoback = retargetInterval;
+
+    // Go back by what we want to be 14 days worth of blocks
+    const CBlockIndex* pindexFirst = pindexLast;
+    for (int i = 0; pindexFirst && i < blockstogoback; i++)
+        pindexFirst = pindexFirst->pprev;
+    assert(pindexFirst);
+
+    // Limit adjustment step
+    int64_t nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
+    int64_t nModulatedTimespan = nActualTimespan;
+    
+    if (fNewDifficultyProtocol) //DigiShield implementation - thanks to RealSolid & WDC for this code
+    {
+        // amplitude filter - thanks to daft27 for this code
+        nModulatedTimespan = retargetTimespan + (nModulatedTimespan - retargetTimespan)/8;
+
+        if (nModulatedTimespan < (retargetTimespan - (retargetTimespan/4)) ) nModulatedTimespan = (retargetTimespan - (retargetTimespan/4));
+        if (nModulatedTimespan > (retargetTimespan + (retargetTimespan/2)) ) nModulatedTimespan = (retargetTimespan + (retargetTimespan/2));
+    }
+    else if (pindexLast->nHeight+1 > 10000) {
+        if (nModulatedTimespan < nTargetTimespan/4)
+            nModulatedTimespan = nTargetTimespan/4;
+        if (nModulatedTimespan > nTargetTimespan*4)
+            nModulatedTimespan = nTargetTimespan*4;
+    }
+    else if (pindexLast->nHeight+1 > 5000)
+    {
+        if (nModulatedTimespan < nTargetTimespan/8)
+            nModulatedTimespan = nTargetTimespan/8;
+        if (nModulatedTimespan > nTargetTimespan*4)
+            nModulatedTimespan = nTargetTimespan*4;
+    }
+    else
+    {
+        if (nModulatedTimespan < nTargetTimespan/16)
+            nModulatedTimespan = nTargetTimespan/16;
+        if (nModulatedTimespan > nTargetTimespan*4)
+            nModulatedTimespan = nTargetTimespan*4;
+    }
+
+    // Retarget
+    CBigNum bnNew;
+    bnNew.SetCompact(pindexLast->nBits);
+    bnNew *= nModulatedTimespan;
+    bnNew /= retargetTimespan;
+
+    if (bnNew > Params().ProofOfWorkLimit())
+        bnNew = Params().ProofOfWorkLimit();
+
+    unsigned int nNewBits = bnNew.GetCompact();
+
+    /// debug print
+    LogPrintf("GetNextWorkRequired() : RETARGET; target: %d, actual: %d, modulated: %d, before: %08x, after: %08x\n",
+        retargetTimespan, nActualTimespan, nModulatedTimespan, pindexLast->nBits, nNewBits);
+
+    return nNewBits;
+}
+
+
+
+// This is the original DigiShield
+// 2014-10-28 yoyo/Cryptoslave reported bad adjustment performance
+// see the above improved algorithm
+unsigned int static DigiShield_DigiByte(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
 {
     // DigiShield difficulty retarget system
     // Credits to DigiByte developers
