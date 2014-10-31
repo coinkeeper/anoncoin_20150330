@@ -1247,28 +1247,49 @@ static const int64_t nTargetTimespanNEW = 60 ; // Dogecoin: every 1 minute
 static const int64_t nTargetSpacing = 60; // Dogecoin: 1 minute
 static const int64_t nInterval = nTargetTimespan / nTargetSpacing;
 
-static const int64_t nDiffChangeTarget = 145000; // Patch effective @ block 145000
-static const int64_t nTestnetResetTargetFix = 157500; // Testnet enables target reset at block 157500
+static const int64_t nDiffChangeTarget = 9999999; // GNOSIS TODO
 
+///
+// minimum amount of work that could possibly be required nTime after
+// minimum work required was nBase
 //
+// ANONCOIN
+unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
+{
+
+    CBigNum bnResult;
+    bnResult.SetCompact(nBase);
+    while (nTime > 0 && bnResult < bnProofOfWorkLimit)
+    {
+        // Maximum 141% adjustment...
+        bnResult = (bnResult * 99) / 70;
+        // ... in best-case exactly 4-times-normal target time
+        nTime -= nTargetTimespan*4;
+    }
+    if (bnResult > bnProofOfWorkLimit)
+        bnResult = bnProofOfWorkLimit;
+    return bnResult.GetCompact();
+}
+
+/
 // minimum amount of work that could possibly be required nTime after
 // minimum work required was nBase
 //
 unsigned int DogeCoin_ComputeMinWork(unsigned int nBase, int64_t nTime)
 {
-    const CBigNum &bnLimit = Params().ProofOfWorkLimit();
     // Testnet has min-difficulty blocks
     // after nTargetSpacing*2 time between blocks:
-    if (TestNet() && nTime > nTargetSpacing*2)
-        return bnLimit.GetCompact();
+    if (fTestNet && nTime > nTargetSpacing*2)
+        return bnProofOfWorkLimit.GetCompact();
 
     CBigNum bnResult;
     bnResult.SetCompact(nBase);
-    while (nTime > 0 && bnResult < bnLimit)
+    while (nTime > 0 && bnResult < bnProofOfWorkLimit)
     {
-        if(chainActive.Height()+1<nDiffChangeTarget){
-            // Maximum 400% adjustment...
-            bnResult *= 4;
+        assert(pindexBest != NULL);             // hmm, I should figure out if this is possible
+        if(pindexBest->nHeight < nDiffChangeTarget){
+            // Maximum 141% adjustment...
+            bnResult = (bnResult * 99) / 70;
             // ... in best-case exactly 4-times-normal target time
             nTime -= nTargetTimespan*4;
         } else {
@@ -1278,14 +1299,14 @@ unsigned int DogeCoin_ComputeMinWork(unsigned int nBase, int64_t nTime)
             nTime -= nTargetTimespanNEW*4;
         }
     }
-    if (bnResult > bnLimit)
-        bnResult = bnLimit;
+    if (bnResult > bnProofOfWorkLimit)
+        bnResult = bnProofOfWorkLimit;
     return bnResult.GetCompact();
 }
 
 unsigned int DogeCoin_GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
 {
-    unsigned int nProofOfWorkLimit = Params().ProofOfWorkLimit().GetCompact();
+    unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
 
     int nHeight = pindexLast->nHeight + 1;
     bool fNewDifficultyProtocol = (nHeight >= nDiffChangeTarget);
@@ -1302,7 +1323,7 @@ unsigned int DogeCoin_GetNextWorkRequired(const CBlockIndex* pindexLast, const C
     if (pindexLast == NULL)
         return nProofOfWorkLimit;
 
-    if (TestNet() && pindexLast->nHeight >= nTestnetResetTargetFix && pblock->nTime > pindexLast->nTime + nTargetSpacing*2)
+    if (fTestNet && pblock->nTime > pindexLast->nTime + nTargetSpacing*2)
     {
         // Special difficulty rule for testnet:
         // If the new block's timestamp is more than 2* nTargetSpacing minutes
@@ -1313,21 +1334,13 @@ unsigned int DogeCoin_GetNextWorkRequired(const CBlockIndex* pindexLast, const C
     // Only change once per interval
     if ((pindexLast->nHeight+1) % retargetInterval != 0)
     {
-        if (TestNet())
+        if (fTestNet && pblock->nTime <= pindexLast->nTime + nTargetSpacing*2)
         {
-            if (pblock->nTime > pindexLast->nTime + nTargetSpacing*2)
-            {
-                // Special difficulty rule for testnet:
-                // If the new block's timestamp is more than 2* nTargetSpacing minutes
-                // then allow mining of a min-difficulty block.
-                return nProofOfWorkLimit;
-            } else {
-                // Return the last non-special-min-difficulty-rules-block
-                const CBlockIndex* pindex = pindexLast;
-                while (pindex->pprev && pindex->nHeight % retargetInterval != 0 && pindex->nBits == nProofOfWorkLimit)
-                    pindex = pindex->pprev;
-                return pindex->nBits;
-            }
+            // Return the last non-special-min-difficulty-rules-block
+            const CBlockIndex* pindex = pindexLast;
+            while (pindex->pprev && pindex->nHeight % retargetInterval != 0 && pindex->nBits == nProofOfWorkLimit)
+                pindex = pindex->pprev;
+            return pindex->nBits;
         }
         return pindexLast->nBits;
     }
@@ -1389,7 +1402,7 @@ unsigned int DogeCoin_GetNextWorkRequired(const CBlockIndex* pindexLast, const C
     unsigned int nNewBits = bnNew.GetCompact();
 
     /// debug print
-    LogPrintf("GetNextWorkRequired() : RETARGET; target: %d, actual: %d, modulated: %d, before: %08x, after: %08x\n",
+    printf("GetNextWorkRequired() : RETARGET; target: %d, actual: %d, modulated: %d, before: %08x, after: %08x\n",
         retargetTimespan, nActualTimespan, nModulatedTimespan, pindexLast->nBits, nNewBits);
 
     return nNewBits;
@@ -1478,27 +1491,6 @@ unsigned int static DigiShield_DigiByte(const CBlockIndex* pindexLast, const CBl
     return bnNew.GetCompact();
 }
 
-
-//
-// minimum amount of work that could possibly be required nTime after
-// minimum work required was nBase
-//
-unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
-{
-
-    CBigNum bnResult;
-    bnResult.SetCompact(nBase);
-    while (nTime > 0 && bnResult < bnProofOfWorkLimit)
-    {
-        // Maximum 141% adjustment...
-        bnResult = (bnResult * 99) / 70;
-        // ... in best-case exactly 4-times-normal target time
-        nTime -= nTargetTimespan*4;
-    }
-    if (bnResult > bnProofOfWorkLimit)
-        bnResult = bnProofOfWorkLimit;
-    return bnResult.GetCompact();
-}
 
 unsigned int static NeoGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
 {
