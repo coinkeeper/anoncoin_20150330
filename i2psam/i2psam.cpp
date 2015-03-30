@@ -119,7 +119,7 @@ void Socket::init()
     if (connect(socket_, (const sockaddr*)&servAddr_, sizeof(servAddr_)) == SAM_SOCKET_ERROR)
     {
         close();
-        print_error("Failed to connect to SAM");
+        // print_error("Failed to connect to SAM");
         return;
     }
 }
@@ -268,13 +268,13 @@ StreamSession::StreamSession(StreamSession& rhs)
     for(ForwardedStreamsContainer::const_iterator it = rhs.forwardedStreams_.begin(), end = rhs.forwardedStreams_.end(); it != end; ++it)
         forward(it->host, it->port, it->silent);
 
-    std::cout << "Created a new SAM session (" << sessionID_ << ")  from another (" << rhs.sessionID_ << ")" << std::endl;
+    // std::cout << "Created a new SAM session (" << sessionID_ << ")  from another (" << rhs.sessionID_ << ")" << std::endl;
 }
 
 StreamSession::~StreamSession()
 {
     stopForwardingAll();
-    std::cout << "Closing SAM session (" << sessionID_ << ") ..." << std::endl;
+    // std::cout << "Closing SAM session (" << sessionID_ << ") ..." << std::endl;
 }
 
 /*static*/
