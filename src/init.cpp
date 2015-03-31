@@ -752,7 +752,7 @@ bool AppInit2(boost::thread_group& threadGroup)
 
     if (!GetBoolArg("-stfu", false)) {
         if (!IsBehindDarknet()) {
-	InitWarning("Anoncoin is running on clearnet!\n");
+	// InitWarning("Anoncoin is running on clearnet!\n");
         }
     }
 
